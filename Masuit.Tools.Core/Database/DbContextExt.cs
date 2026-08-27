@@ -20,28 +20,30 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry<T>> GetChanges<T>(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e is { State: EntityState.Modified, Entity: T }).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e is { State: EntityState.Modified, Entity: T }).Select(e => new ChangeEntry<T>
         {
-            NullableDictionary<string, object> originalObject = e.OriginalValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            NullableDictionary<string, object> currentObject = e.CurrentValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry<T>
-            {
-                EntityState = e.State,
-                Entity = (T)e.Entity,
+            EntityState = e.State,
+            Entity = (T)e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.OriginalValues.Properties.Select(p => (Property: p, Value: originalObject[p.PropertyInfo?.Name])).Zip(e.CurrentValues.Properties.Select(p => (Property: p, Value: currentObject[p.PropertyInfo?.Name])), (t1, t2) => new ChangePropertyInfo
+            ChangeProperties = e.OriginalValues.Properties.Select(p => (Property: p, Value: e.OriginalValues[p])).Zip(e.CurrentValues.Properties.Select(p => (Property: p, Value: e.CurrentValues[p])), (t1, t2) => new ChangePropertyInfo
+            {
+                PropertyInfo = t1.Property.PropertyInfo,
+                OriginalValue = t1.Value,
+                CurrentValue = t2.Value,
+                IsPrimaryKey = t1.Property.IsPrimaryKey(),
+                IsForeignKey = t1.Property.IsForeignKey()
+            }).Where(t =>
+            {
+                if (t.OriginalValue is IEnumerable<object> arr)
                 {
-                    PropertyInfo = t1.Property.PropertyInfo,
-                    OriginalValue = t1.Value,
-                    CurrentValue = t2.Value,
-                    IsPrimaryKey = t1.Property.IsPrimaryKey(),
-                    IsForeignKey = t1.Property.IsForeignKey()
-                }).Where(t => Comparer.Default.Compare(t.OriginalValue, t.CurrentValue) != 0).ToList()
-            };
+                    return !arr.SequenceEqual((IEnumerable<object>)t.CurrentValue);
+                }
+                return Comparer.Default.Compare(t.OriginalValue, t.CurrentValue) != 0;
+            }).ToList()
         });
     }
 
@@ -52,28 +54,30 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry> GetChanges(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Modified).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Modified).Select(e => new ChangeEntry
         {
-            NullableDictionary<string, object> originalObject = e.OriginalValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            NullableDictionary<string, object> currentObject = e.CurrentValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry
-            {
-                EntityState = e.State,
-                Entity = e.Entity,
+            EntityState = e.State,
+            Entity = e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.OriginalValues.Properties.Select(p => (Property: p, Value: originalObject[p.PropertyInfo?.Name])).Zip(e.CurrentValues.Properties.Select(p => (Property: p, Value: currentObject[p.PropertyInfo?.Name])), (t1, t2) => new ChangePropertyInfo
+            ChangeProperties = e.OriginalValues.Properties.Select(p => (Property: p, Value: e.OriginalValues[p])).Zip(e.CurrentValues.Properties.Select(p => (Property: p, Value: e.CurrentValues[p])), (t1, t2) => new ChangePropertyInfo
+            {
+                PropertyInfo = t1.Property.PropertyInfo,
+                OriginalValue = t1.Value,
+                CurrentValue = t2.Value,
+                IsPrimaryKey = t1.Property.IsPrimaryKey(),
+                IsForeignKey = t1.Property.IsForeignKey()
+            }).Where(t =>
+            {
+                if (t.OriginalValue is IEnumerable<object> arr)
                 {
-                    PropertyInfo = t1.Property.PropertyInfo,
-                    OriginalValue = t1.Value,
-                    CurrentValue = t2.Value,
-                    IsPrimaryKey = t1.Property.IsPrimaryKey(),
-                    IsForeignKey = t1.Property.IsForeignKey()
-                }).Where(t => Comparer.Default.Compare(t.OriginalValue, t.CurrentValue) != 0).ToList()
-            };
+                    return !arr.SequenceEqual((IEnumerable<object>)t.CurrentValue);
+                }
+                return Comparer.Default.Compare(t.OriginalValue, t.CurrentValue) != 0;
+            }).ToList()
         });
     }
 
@@ -85,26 +89,22 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry<T>> GetAdded<T>(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added && e.Entity is T).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e is {State: EntityState.Added, Entity: T}).Select(e => new ChangeEntry<T>
         {
-            NullableDictionary<string, object> currentObject = e.CurrentValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry<T>
-            {
-                EntityState = e.State,
-                Entity = (T)e.Entity,
+            EntityState = e.State,
+            Entity = (T)e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.CurrentValues.Properties.Select(p => new ChangePropertyInfo()
-                {
-                    PropertyInfo = p.PropertyInfo,
-                    CurrentValue = currentObject[p.PropertyInfo?.Name],
-                    IsPrimaryKey = p.IsPrimaryKey(),
-                    IsForeignKey = p.IsForeignKey(),
-                }).ToList()
-            };
+            ChangeProperties = e.CurrentValues.Properties.Select(p => new ChangePropertyInfo()
+            {
+                PropertyInfo = p.PropertyInfo,
+                CurrentValue = e.CurrentValues[p],
+                IsPrimaryKey = p.IsPrimaryKey(),
+                IsForeignKey = p.IsForeignKey(),
+            }).ToList()
         });
     }
 
@@ -115,26 +115,22 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry> GetAdded(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).Select(e => new ChangeEntry
         {
-            NullableDictionary<string, object> currentObject = e.CurrentValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry
-            {
-                EntityState = e.State,
-                Entity = e.Entity,
+            EntityState = e.State,
+            Entity = e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.CurrentValues.Properties.Select(p => new ChangePropertyInfo
-                {
-                    PropertyInfo = p.PropertyInfo,
-                    CurrentValue = currentObject[p.PropertyInfo?.Name],
-                    IsPrimaryKey = p.IsPrimaryKey(),
-                    IsForeignKey = p.IsForeignKey(),
-                }).ToList()
-            };
+            ChangeProperties = e.CurrentValues.Properties.Select(p => new ChangePropertyInfo
+            {
+                PropertyInfo = p.PropertyInfo,
+                CurrentValue = e.CurrentValues[p],
+                IsPrimaryKey = p.IsPrimaryKey(),
+                IsForeignKey = p.IsForeignKey(),
+            }).ToList()
         });
     }
 
@@ -146,26 +142,22 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry<T>> GetRemoved<T>(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted && e.Entity is T).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted && e.Entity is T).Select(e => new ChangeEntry<T>
         {
-            NullableDictionary<string, object> originalObject = e.OriginalValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry<T>
-            {
-                EntityState = e.State,
-                Entity = (T)e.Entity,
+            EntityState = e.State,
+            Entity = (T)e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.OriginalValues.Properties.Select(p => new ChangePropertyInfo
-                {
-                    PropertyInfo = p.PropertyInfo,
-                    OriginalValue = originalObject[p.PropertyInfo?.Name],
-                    IsPrimaryKey = p.IsPrimaryKey(),
-                    IsForeignKey = p.IsForeignKey(),
-                }).ToList()
-            };
+            ChangeProperties = e.OriginalValues.Properties.Select(p => new ChangePropertyInfo
+            {
+                PropertyInfo = p.PropertyInfo,
+                OriginalValue = e.OriginalValues[p],
+                IsPrimaryKey = p.IsPrimaryKey(),
+                IsForeignKey = p.IsForeignKey(),
+            }).ToList()
         });
     }
 
@@ -176,26 +168,22 @@ public static class DbContextExt
     /// <returns></returns>
     public static IEnumerable<ChangeEntry> GetRemoved(this DbContext db)
     {
-        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted).Select(e =>
+        return db.ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted).Select(e => new ChangeEntry
         {
-            NullableDictionary<string, object> originalObject = e.OriginalValues.ToObject() as Dictionary<string, object> ?? new NullableDictionary<string, object>();
-            return new ChangeEntry
-            {
-                EntityState = e.State,
-                Entity = e.Entity,
+            EntityState = e.State,
+            Entity = e.Entity,
 #if NET10_0_OR_GREATER
                 EntityType = e.OriginalValues.StructuralType.ClrType,
 #else
-                EntityType = e.OriginalValues.EntityType.ClrType,
+            EntityType = e.OriginalValues.EntityType.ClrType,
 #endif
-                ChangeProperties = e.OriginalValues.Properties.Select(p => new ChangePropertyInfo
-                {
-                    PropertyInfo = p.PropertyInfo,
-                    OriginalValue = originalObject[p.PropertyInfo?.Name],
-                    IsPrimaryKey = p.IsPrimaryKey(),
-                    IsForeignKey = p.IsForeignKey(),
-                }).ToList()
-            };
+            ChangeProperties = e.OriginalValues.Properties.Select(p => new ChangePropertyInfo
+            {
+                PropertyInfo = p.PropertyInfo,
+                OriginalValue = e.OriginalValues[p],
+                IsPrimaryKey = p.IsPrimaryKey(),
+                IsForeignKey = p.IsForeignKey(),
+            }).ToList()
         });
     }
 
